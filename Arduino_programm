@@ -1,0 +1,935 @@
+//                       Einbindung von Bilbiotheken
+//                       Einbindung von Bilbiotheken
+//       Bibliothek für Netzwerk Server
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+#include "html.h"
+
+// Bilbiotheken für OTA Flashen
+#include <ESP8266mDNS.h>
+#include <WiFiUdp.h>
+#include <ArduinoOTA.h>
+
+//       Bilbiothek für ws2812 LED-Streifen
+#define FASTLED_ESP8266_RAW_PIN_ORDER             //muss über dem #include der Bibliothek FastLED stehen 
+#define FASTLED_INTERRUPT_RETRY_COUNT 0                                    // auskommentieren wenn rtc Zeiten nicht genutzt werden
+#include <FastLED.h>
+
+//       Bilbiothek für RTC Zeitgeber und I2C Bus system
+#include <Wire.h>
+#include "RTClib.h"
+
+
+
+//                       Definition für ws2812 LED-Streifen
+//                       Definition für ws2812 LED-Streifen
+//        Anschluss Pin
+#define PIN_1        D5
+#define PIN_2        D6
+#define PIN_3        D7
+#define PIN_4        D8
+
+//        Anzahl LED's Streifen
+#define NUMPIXELS_1  109
+#define NUMPIXELS_2  88
+#define NUMPIXELS_3  43
+#define NUMPIXELS_4  56
+
+//        Grundwerte Für ws2812 LED-Streifen
+#define Helligkeit 255
+#define CHIPSET     WS2812B
+#define COLOR_ORDER GRB
+
+
+//        Einstellung der Daten Array's von ws2812 LED-streifen
+CRGB pixels_1[NUMPIXELS_1];
+CRGB pixels_2[NUMPIXELS_2];
+CRGB pixels_3[NUMPIXELS_3];
+CRGB pixels_4[NUMPIXELS_4];
+
+
+//                        Definition für Wlan Verbindung
+//                        Definition für Wlan Verbindung
+//        W-Lan Daten
+const char* ssid      = "****";               //SSID
+const char* password  = "****";   //Passwort
+const int   PORT      = 80;
+ESP8266WebServer server(PORT);
+
+
+//                        Definition Daten von Extern (APP)
+//                        Definition Daten von Extern (APP)
+//         Daten Farbwerte
+int daten_web_red;
+int daten_web_green;
+int daten_web_blue;
+int daten_web_helligkeit;
+
+//         sonstige Daten
+int daten_web_aus_in;
+int daten_web_modus;
+int daten_web_streifen_nr;
+int daten_web_nr_streifen;
+//        Daten zeitsteuerung 1
+int web_daten_Wochentag[4];
+int web_daten_Stunde[4];
+int web_daten_Minute[4];
+int web_daten_zeitgesteuert_an_oder_aus[4] = {0, 0, 0, 0};
+int web_daten_rot[4];
+int web_daten_blau[4];
+int web_daten_gruen[4];
+
+
+//                        Definition Daten für interne Verabreitung
+//                        Definition Daten für interne Verabreitung
+//         Daten Farbe
+int daten_red;
+int daten_green;
+int daten_blue;
+int daten_helligkeit;
+int random_RGB[3];
+int wert_farbe_lichterkette[3];
+
+//         sonstige Daten
+int daten_modus;
+int daten_streifen_nr;
+int sende_modus;
+int pin_web = 0;
+int daten_wochentag_nr;
+
+//         Sicherheit
+int pin_fuer_web_steuerung = ****;
+
+//         Daten_zeiten
+unsigned long zeit_start_fuer_ausgabe;
+unsigned long zeit_start_fuer_taster_1;
+int warten_ausgabe = 2000;
+
+//         Daten_Random
+unsigned long zeit_start_fuer_random_farbe;
+int daten_fuer_random_rot = 255;
+int daten_fuer_random_gruen = 255;
+int daten_fuer_random_blau = 255;
+int warten_random;
+int warten_random_ja = HIGH;
+
+//         Daten_lauflicht
+unsigned long zeit_start_fuer_lauflicht;
+int zeit_lauflicht_pro_led = 15;
+int zeit_nehmen_lauflicht = LOW;
+int daten_streifen_durchlauf_lauflicht;
+int a;
+int b;
+int c;
+int d;
+
+//         Daten_aus_in
+unsigned long zeit_start_aus_in;
+int aus_in;
+int zeit_nehmen_aus_in = LOW;
+int ausschalten_ja_nein;
+
+//        Daten audio effekte
+int mic_in = A0;
+int addLedsConstant = 5; //how fast are LEDS added to bar
+int removeLedsTimeConstant = 5; //how fast are LEDS removed from bar
+int middleColorLED_1 = (NUMPIXELS_1 * 0.4);
+int middleColorLED_2 = (NUMPIXELS_2 * 0.4);
+int numLedsToLight_1;
+int numLedsToLight_2;
+long lastRefreshTime1;
+long lastRefreshTime2;
+int wert_mic;
+int standart_wert = 640;
+
+int web_empfindlichkeit_audio;
+int empfindlichkeit_audio;
+
+
+//        Daten für RTC Zeitengeber
+RTC_DS3231 rtc;
+char daysOfTheWeek[7][12] = {"Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"};
+bool syncOnFirstStart = true; // true, falls die Zeitinformationen der RTC mit dem PC synchronisiert werden sollen.
+
+
+//        Daten zeitsteuerung 1
+int daten_Wochentag[4];
+int daten_Stunde[4];
+int daten_Minute[4];
+int daten_zeitgesteuert_an_oder_aus[4] = {0, 0, 0, 0};
+int daten_rot[4];
+int daten_blau[4];
+int daten_gruen[4];
+
+
+
+
+//                        Definition Daten für I/O Ports
+//                        Definition Daten für I/O Ports
+int LOOP_LED = D0;
+
+
+// daten für OTA
+
+
+void setup() {
+
+  Serial.begin(115200);
+  Serial.println("start_setup");
+  delay(10);
+  WiFi.mode(WIFI_STA);
+  WifiInit();
+  server.on("/", handle_index);
+
+  FastLED.addLeds<CHIPSET, PIN_3, COLOR_ORDER>(pixels_1, NUMPIXELS_1).setCorrection( TypicalSMD5050 );
+  FastLED.addLeds<CHIPSET, PIN_1, COLOR_ORDER>(pixels_2, NUMPIXELS_2).setCorrection( TypicalSMD5050 );
+  FastLED.addLeds<CHIPSET, PIN_4, COLOR_ORDER>(pixels_3, NUMPIXELS_3).setCorrection( TypicalSMD5050 );
+  FastLED.addLeds<CHIPSET, PIN_2, COLOR_ORDER>(pixels_4, NUMPIXELS_4).setCorrection( TypicalSMD5050 );
+  FastLED.setBrightness(Helligkeit);
+
+  randomSeed(analogRead(A0));
+
+
+#ifndef ESP8266
+  while (!Serial);
+#endif
+
+  delay(3000);
+
+  for (int i = 0; i < 5; i++) {
+    if (! rtc.begin()) {
+      Serial.print(i);
+      Serial.println("  Kann RTC nicht finden");
+      delay(1000);
+    }
+    if (rtc.begin()) {
+      break;
+    }
+  }
+
+  if (rtc.lostPower() || syncOnFirstStart) {
+    Serial.println("Die RTC war vom Strom getrennt. Die Zeit wird neu synchronisiert.");
+
+    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+  }
+
+  pinMode(LOOP_LED, OUTPUT);
+  zeit_start_fuer_ausgabe = millis();
+  zeit_start_fuer_random_farbe = millis();
+
+
+  Serial.println(2);
+
+  ArduinoOTA.setHostname("LED_Tobias_Zimmer");
+  Serial.println(3);
+
+  ArduinoOTA.setPassword("tob.meyer");
+
+  ArduinoOTA.onStart([]() {
+    String type;
+    if (ArduinoOTA.getCommand() == U_FLASH) {
+      type = "sketch";
+    } else { // U_SPIFFS
+      type = "filesystem";
+    }
+  });
+  ArduinoOTA.onEnd([]() {
+    Serial.println("\nEnd");
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) {
+      Serial.println("Auth Failed");
+    } else if (error == OTA_BEGIN_ERROR) {
+      Serial.println("Begin Failed");
+    } else if (error == OTA_CONNECT_ERROR) {
+      Serial.println("Connect Failed");
+    } else if (error == OTA_RECEIVE_ERROR) {
+      Serial.println("Receive Failed");
+    } else if (error == OTA_END_ERROR) {
+      Serial.println("End Failed");
+    }
+  });
+  ArduinoOTA.begin();
+
+}
+
+
+void WifiInit() {
+  Serial.print("\n\nTry to connect to: ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi connected");
+  server.begin();
+  Serial.println("Server started");
+  Serial.println(WiFi.localIP());
+}
+
+
+void handle_index() {
+  server.send(200, "text/html", HTMLIndex);
+  daten_web_helligkeit   = atoi(server.arg("daten_helligkeit").c_str());
+  daten_web_red   = atoi(server.arg("daten_red").c_str());
+  daten_web_green   = atoi(server.arg("daten_green").c_str());
+  daten_web_blue   = atoi(server.arg("daten_blue").c_str());
+  daten_web_streifen_nr   = atoi(server.arg("streifen").c_str());
+  daten_web_modus   = atoi(server.arg("modus").c_str());
+
+  web_empfindlichkeit_audio = atoi(server.arg("audio").c_str());
+
+  daten_web_aus_in   = atoi(server.arg("aus_in").c_str());
+
+  pin_web   = atoi(server.arg("pin_steuerung").c_str());
+  sende_modus = atoi(server.arg("sende_modus").c_str());
+
+  web_daten_Wochentag[0] = atoi(server.arg("Wochentag_1").c_str());
+  web_daten_Stunde[0] = atoi(server.arg("Stunde_1").c_str());
+  web_daten_Minute[0] = atoi(server.arg("Minute_1").c_str());
+  web_daten_zeitgesteuert_an_oder_aus[0] = atoi(server.arg("zeitgesteuert_an_oder_aus_1").c_str());
+  web_daten_rot[0] = atoi(server.arg("rot_1").c_str());
+  web_daten_blau[0] = atoi(server.arg("blau_1").c_str());
+  web_daten_gruen[0] = atoi(server.arg("gruen_1").c_str());
+
+  web_daten_Wochentag[1] = atoi(server.arg("Wochentag_2").c_str());
+  web_daten_Stunde[1] = atoi(server.arg("Stunde_2").c_str());
+  web_daten_Minute[1] = atoi(server.arg("Minute_2").c_str());
+  web_daten_zeitgesteuert_an_oder_aus[1] = atoi(server.arg("zeitgesteuert_an_oder_aus_2").c_str());
+  web_daten_rot[1] = atoi(server.arg("rot_2").c_str());
+  web_daten_blau[1] = atoi(server.arg("blau_2").c_str());
+  web_daten_gruen[1] = atoi(server.arg("gruen_2").c_str());
+
+  web_daten_Wochentag[2] = atoi(server.arg("Wochentag_3").c_str());
+  web_daten_Stunde[2] = atoi(server.arg("Stunde_3").c_str());
+  web_daten_Minute[2] = atoi(server.arg("Minute_3").c_str());
+  web_daten_zeitgesteuert_an_oder_aus[2] = atoi(server.arg("zeitgesteuert_an_oder_aus_3").c_str());
+  web_daten_rot[2] = atoi(server.arg("rot_3").c_str());
+  web_daten_blau[2] = atoi(server.arg("blau_3").c_str());
+  web_daten_gruen[2] = atoi(server.arg("gruen_3").c_str());
+
+  web_daten_Wochentag[3] = atoi(server.arg("Wochentag_4").c_str());
+  web_daten_Stunde[3] = atoi(server.arg("Stunde_4").c_str());
+  web_daten_Minute[3] = atoi(server.arg("Minute_4").c_str());
+  web_daten_zeitgesteuert_an_oder_aus[3] = atoi(server.arg("zeitgesteuert_an_oder_aus_4").c_str());
+  web_daten_rot[3] = atoi(server.arg("rot_4").c_str());
+  web_daten_blau[3] = atoi(server.arg("blau_4").c_str());
+  web_daten_gruen[3] = atoi(server.arg("gruen_4").c_str());
+
+  server.send(200, "text/html", HTMLIndex);
+}
+
+
+void loop() {
+  ArduinoOTA.handle();
+  eingabe();
+  verarbeitung();
+  ausgabe();
+  digitalWrite(LOOP_LED, HIGH);
+}
+
+
+void eingabe() {
+  server.handleClient();
+
+  if (pin_web == pin_fuer_web_steuerung) {
+    if (sende_modus == 1) {
+      daten_red = (daten_web_red * (daten_web_helligkeit / 255.0));
+      daten_green = (daten_web_green * (daten_web_helligkeit / 255.0));
+      daten_blue = (daten_web_blue * (daten_web_helligkeit / 255.0));
+      daten_helligkeit = daten_web_helligkeit;
+
+      daten_modus = daten_web_modus;
+      daten_streifen_nr = daten_web_streifen_nr;
+      //Serial.println("<<<<<<<<<<<<<<<<<<<<<<<<<<<<Sende_modus 1>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
+      //Serial.println("<<<<<<<<<<<<<<<<<<<<<<<<<<<<Sende_modus 1>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
+      sende_modus = 0;
+    }
+    if (sende_modus == 2) {
+      aus_in = daten_web_aus_in;
+      //Serial.println("<<<<<<<<<<<<<<<<<<<<<<<<<<<<Sende_modus 2>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
+      //Serial.println("<<<<<<<<<<<<<<<<<<<<<<<<<<<<Sende_modus 2>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
+      sende_modus = 0;
+    }
+    if ((sende_modus == 3) || (sende_modus == 4) || (sende_modus == 5) || (sende_modus == 6)) {
+      int i;
+      switch (sende_modus) {
+        case 3:
+          i = 0;
+          break;
+        case 4:
+          i = 1;
+          break;
+        case 5:
+          i = 2;
+          break;
+        case 6:
+          i = 3;
+          break;
+      }
+
+      daten_Wochentag[i] = web_daten_Wochentag[i];
+      daten_Stunde[i] = web_daten_Stunde[i];
+      daten_Minute[i] = web_daten_Minute[i];
+      daten_zeitgesteuert_an_oder_aus[i] = web_daten_zeitgesteuert_an_oder_aus[i];
+      daten_rot[i] = web_daten_rot[i];
+      daten_blau[i] = web_daten_blau[i];
+      daten_gruen[i] = web_daten_gruen[i];
+      sende_modus = 0;
+    }
+    if (sende_modus == 7) {
+      empfindlichkeit_audio = web_empfindlichkeit_audio;
+      //Serial.println("<<<<<<<<<<<<<<<<<<<<<<<<<<<<Sende_modus 7>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
+      //Serial.println("<<<<<<<<<<<<<<<<<<<<<<<<<<<<Sende_modus 7>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
+      sende_modus = 0;
+    }
+  }
+}
+
+
+void verarbeitung() {
+  switch (daten_modus) {
+    case 0:
+      rgb();
+      break;
+    case 1:
+      audio();
+      break;
+    case 2:
+      lichterkette();
+      break;
+    case 3:
+      if (zeit_nehmen_lauflicht == LOW) {
+        zeit_start_fuer_lauflicht = millis();
+        zeit_nehmen_lauflicht = HIGH;
+      }
+      lauflicht(zeit_lauflicht_pro_led);
+      break;
+    case 4:
+      random_farbe();
+      break;
+  }
+
+  if ((daten_zeitgesteuert_an_oder_aus[0] != 0)
+      || (daten_zeitgesteuert_an_oder_aus[1] != 0)
+      || (daten_zeitgesteuert_an_oder_aus[2] != 0)
+      || (daten_zeitgesteuert_an_oder_aus[3] != 0)) {
+    zeitgesteuert_an_aus();
+  }
+
+  if (daten_modus != 3) {
+    zeit_nehmen_lauflicht = LOW;
+    a = 0;
+    b = NUMPIXELS_4;
+    c = 0;
+    d = NUMPIXELS_2;
+    daten_streifen_durchlauf_lauflicht = 5;
+    ausschalten_ja_nein = 0;
+  }
+
+  if (aus_in > 1) {
+    auschalten_in_min();
+  } else {
+    zeit_nehmen_aus_in = LOW;
+  }
+  FastLED.show();
+}
+
+
+void rgb() {
+  switch (daten_streifen_nr) {
+    case 0:
+      for (int i = 0; i < 4; i++) {
+        setze_led_farben(i, daten_red, daten_green, daten_blue);
+      }
+      break;
+    case 1:
+      setze_led_farben(1, daten_red, daten_green, daten_blue);
+      break;
+    case 2:
+      setze_led_farben(2, daten_red, daten_green, daten_blue);
+      break;
+    case 3:
+      setze_led_farben(3, daten_red, daten_green, daten_blue);
+      break;
+    case 4:
+      setze_led_farben(4, daten_red, daten_green, daten_blue);
+      break;
+  }
+}
+
+
+void audio() {
+  int mic_daten = standart_wert - analogRead(mic_in);
+  mic_daten = sq(mic_daten);
+  mic_daten = sqrt(mic_daten);
+
+  int ledsToLight_1 = map(mic_daten, 2, empfindlichkeit_audio, 0, NUMPIXELS_1);
+  int ledsToLight_2 = map(mic_daten, 2, empfindlichkeit_audio, 0, NUMPIXELS_2);
+
+  Serial.print(empfindlichkeit_audio);
+  Serial.print("  ");
+  Serial.print(ledsToLight_1);
+  Serial.print("  ");
+  Serial.println(mic_daten);
+
+  if (ledsToLight_2 > numLedsToLight_2) {
+    numLedsToLight_2 += addLedsConstant;
+  } else if (ledsToLight_2 < numLedsToLight_2) {
+    if (millis() - lastRefreshTime1 >= removeLedsTimeConstant) {
+      lastRefreshTime1 += removeLedsTimeConstant;
+      numLedsToLight_2 -= 1;
+    }
+  }
+
+  if (numLedsToLight_2 < 1) {
+    numLedsToLight_2 = 0;
+  }
+  if (numLedsToLight_2 > NUMPIXELS_2) {
+    numLedsToLight_2 = NUMPIXELS_2;
+  }
+
+  for (int led = 0; led < numLedsToLight_2; led++) {
+    if (led < middleColorLED_2) {
+      pixels_2[led] = CRGB((map(led, 0, middleColorLED_2 - 1, 0, 255)
+                            * (daten_helligkeit / 255.0)), (255 * (daten_helligkeit / 255.0)), 0);
+    } else {
+      pixels_2[led] = CRGB((255 * (daten_helligkeit / 255.0)), (map(led, middleColorLED_2, NUMPIXELS_2, 255, 0) * (daten_helligkeit / 255.0)), 0);
+    }
+  }
+
+  for (int led = NUMPIXELS_2; led >= numLedsToLight_2; led--) {
+    pixels_2[led] = CRGB((daten_red / 2), (daten_green / 2), (daten_blue / 2));
+  }
+
+  if (ledsToLight_1 > numLedsToLight_1) {
+    numLedsToLight_1 += addLedsConstant;
+  } else if (ledsToLight_1 < numLedsToLight_1) {
+    if (millis() - lastRefreshTime2 >= removeLedsTimeConstant) {
+      lastRefreshTime2 += removeLedsTimeConstant;
+      numLedsToLight_1 -= 1;
+    }
+  }
+
+  if (numLedsToLight_1 < 1) {
+    numLedsToLight_1 = 0;
+  }
+  if (numLedsToLight_1 > NUMPIXELS_1) {
+    numLedsToLight_1 = NUMPIXELS_1;
+  }
+
+  for (int led = 0; led < numLedsToLight_1; led++) {
+    if (led < middleColorLED_1) {
+      pixels_1[led] = CRGB((map(led, 0, middleColorLED_1 - 1, 0, 255) * (daten_helligkeit / 255.0)), (255 * (daten_helligkeit / 255.0)), 0);
+    } else {
+      pixels_1[led] = CRGB((255 * (daten_helligkeit / 255.0)), (map(led, middleColorLED_1, NUMPIXELS_1, 255, 0) * (daten_helligkeit / 255.0)), 0);
+    }
+  }
+
+  for (int led = NUMPIXELS_1; led >= numLedsToLight_1; led--) {
+    pixels_1[led] = CRGB((daten_red / 2), (daten_green / 2), (daten_blue / 2));
+  }
+
+
+  switch (daten_streifen_nr) {
+    case 0:
+      setze_led_farben(3, daten_red, daten_green, daten_blue);
+      setze_led_farben(4, daten_red, daten_green, daten_blue);
+      break;
+    case 3:
+      setze_led_farben(3, daten_red, daten_green, daten_blue);
+      break;
+    case 4:
+      setze_led_farben(4, daten_red, daten_green, daten_blue);
+      break;
+  }
+}
+
+
+void lichterkette() {
+  int anzahl_led_an = 6;
+  int anzahl_leds = 0;
+  int i = 0;
+  int zahler_durchlauf = 1;
+
+
+  while (i <= NUMPIXELS_2) {
+    anzahl_leds = 0;
+
+    while (anzahl_leds < anzahl_led_an) {
+      switch (zahler_durchlauf) {
+        case 1:
+          setze_farbe_lichterkette_1(daten_blue, daten_streifen_nr);
+          break;
+        case 2:
+          setze_farbe_lichterkette_2(daten_green, daten_streifen_nr);
+          break;
+        case 3:
+          setze_farbe_lichterkette_3(daten_red, daten_streifen_nr);
+          break;
+      }
+      setze_farbe_lichterkette(i, daten_streifen_nr);
+      anzahl_leds++;
+      i++;
+    }
+    if (zahler_durchlauf < 3 ) {
+      zahler_durchlauf++;
+    } else {
+      zahler_durchlauf = 1;
+    }
+  }
+}
+
+void setze_farbe_lichterkette_1(int farb_wert, int welcher_streifen) {
+  wert_farbe_lichterkette[0] = 0;
+  wert_farbe_lichterkette[1] = 0;
+
+  if (welcher_streifen = 0) {
+    wert_farbe_lichterkette[2] = farbe_mit_helligkeit(255);
+  } else {
+    wert_farbe_lichterkette[2] = farbe_mit_helligkeit(farb_wert);
+  }
+}
+
+void setze_farbe_lichterkette_2(int farb_wert, int welcher_streifen) {
+  wert_farbe_lichterkette[1] = 0;
+  wert_farbe_lichterkette[2] = 0;
+
+  if (welcher_streifen = 0) {
+    wert_farbe_lichterkette[0] = farbe_mit_helligkeit(255);
+  } else {
+    wert_farbe_lichterkette[0] = farbe_mit_helligkeit(farb_wert);
+  }
+}
+
+void setze_farbe_lichterkette_3(int farb_wert, int welcher_streifen) {
+
+  wert_farbe_lichterkette[0] = farbe_mit_helligkeit(153);
+  wert_farbe_lichterkette[1] = 0;
+  wert_farbe_lichterkette[2] = farbe_mit_helligkeit(84);
+
+}
+
+void setze_farbe_lichterkette(int led_nr, int welcher_streifen) {
+  switch (welcher_streifen) {
+    case 0:
+      if (led_nr <= NUMPIXELS_1)
+        pixels_1[led_nr] = CRGB(wert_farbe_lichterkette[0], wert_farbe_lichterkette[1], wert_farbe_lichterkette[2]);
+      if (led_nr <= NUMPIXELS_2)
+        pixels_2[led_nr] = CRGB(wert_farbe_lichterkette[0], wert_farbe_lichterkette[1], wert_farbe_lichterkette[2]);
+      if (led_nr <= NUMPIXELS_3)
+        pixels_3[led_nr] = CRGB(wert_farbe_lichterkette[0], wert_farbe_lichterkette[1], wert_farbe_lichterkette[2]);
+      if (led_nr <= NUMPIXELS_4)
+        pixels_4[led_nr] = CRGB(wert_farbe_lichterkette[0], wert_farbe_lichterkette[1], wert_farbe_lichterkette[2]);
+      break;
+    case 1:
+      if (led_nr <= NUMPIXELS_1)
+        pixels_1[led_nr] = CRGB(wert_farbe_lichterkette[0], wert_farbe_lichterkette[1], wert_farbe_lichterkette[2]);
+      break;
+    case 2:
+      if (led_nr <= NUMPIXELS_2)
+        pixels_2[led_nr] = CRGB(wert_farbe_lichterkette[0], wert_farbe_lichterkette[1], wert_farbe_lichterkette[2]);
+      break;
+    case 3:
+      if (led_nr <= NUMPIXELS_3)
+        pixels_3[led_nr] = CRGB(wert_farbe_lichterkette[0], wert_farbe_lichterkette[1], wert_farbe_lichterkette[2]);
+      break;
+    case 4:
+      if (led_nr <= NUMPIXELS_4)
+        pixels_4[led_nr] = CRGB(wert_farbe_lichterkette[0], wert_farbe_lichterkette[1], wert_farbe_lichterkette[2]);
+      break;
+  }
+}
+
+
+
+
+void random_farbe() {
+  if (warten_random_ja == HIGH) {
+    warten_random_ja = LOW;
+    zeit_start_fuer_random_farbe = millis();
+    warten_random = random(100, 2000);
+  }
+
+  if ((millis() - warten_random) > zeit_start_fuer_random_farbe) {
+    zeit_start_fuer_random_farbe = millis();
+    zufallswert_rgb();
+    switch (daten_streifen_nr) {
+      case 0:
+        {
+          zufallswert_rgb();
+          setze_led_farben(1, random_RGB[0], random_RGB[1], random_RGB[2]);
+          zufallswert_rgb();
+          setze_led_farben(2, random_RGB[0], random_RGB[1], random_RGB[2]);
+          zufallswert_rgb();
+          setze_led_farben(3, random_RGB[0], random_RGB[1], random_RGB[2]);
+          zufallswert_rgb();
+          setze_led_farben(4, random_RGB[0], random_RGB[1], random_RGB[2]);
+        }
+        break;
+      case 1:
+        setze_led_farben(1, random_RGB[0], random_RGB[1], random_RGB[2]);
+        break;
+      case 2:
+        setze_led_farben(2, random_RGB[0], random_RGB[1], random_RGB[2]);
+        break;
+      case 3:
+        setze_led_farben(3, random_RGB[0], random_RGB[1], random_RGB[2]);
+        break;
+      case 4:
+        setze_led_farben(4, random_RGB[0], random_RGB[1], random_RGB[2]);
+        break;
+    }
+    warten_random_ja = HIGH;
+  }
+}
+
+
+void lauflicht(int geschwindigkeit) {
+  if (millis() >= (zeit_start_fuer_lauflicht + geschwindigkeit)) {
+    zeit_start_fuer_lauflicht  = millis();
+
+    if (daten_streifen_durchlauf_lauflicht == 5) {
+      daten_streifen_durchlauf_lauflicht = 1;
+
+      if (ausschalten_ja_nein == 0) {
+        zufallswert_rgb();
+      } else if (ausschalten_ja_nein == 1) {
+        random_RGB[0] = 0;
+        random_RGB[1] = 0;
+        random_RGB[2] = 0;
+      }
+    }
+    switch (daten_streifen_durchlauf_lauflicht) {
+      case 1:
+        a = lauflicht_1( a, NUMPIXELS_1, 1);
+        if (a == NUMPIXELS_1) {
+          daten_streifen_durchlauf_lauflicht = 2;
+          a = 0;
+        }
+        break;
+      case 2:
+        b = lauflicht_2(b, 4);
+        if (b == -1) {                              // muss -1 überprüfen, da ansonsten die led mit adresse 0 nicht angesteuert wird
+          daten_streifen_durchlauf_lauflicht = 3;
+          b = NUMPIXELS_4;
+        }
+        break;
+      case 3:
+        c = lauflicht_1(c, NUMPIXELS_3, 3);
+        if (c == NUMPIXELS_3) {
+          daten_streifen_durchlauf_lauflicht = 4;
+          c = 0;
+        }
+
+        break;
+      case 4:
+        if (d == -1) {
+          daten_streifen_durchlauf_lauflicht = 5;
+          d = NUMPIXELS_2;
+        }
+        d = lauflicht_2(d, 2);
+        break;
+    }
+  }
+}
+
+int lauflicht_1(int led_nummer, int anzahl_leds, int streifen) {
+  if (led_nummer < anzahl_leds) {
+    if (streifen == 1) {
+      pixels_1[led_nummer] = CRGB(random_RGB[0], random_RGB[1], random_RGB[2]);
+    } else if (streifen == 3) {
+      pixels_3[led_nummer] = CRGB(random_RGB[0], random_RGB[1], random_RGB[2]);
+    }
+  }
+  led_nummer++;
+  return led_nummer;
+}
+
+int lauflicht_2( int led_nummer, int streifen) {
+  if (led_nummer >= 0) {
+    if (streifen == 4) {
+      pixels_4[led_nummer] = CRGB(random_RGB[0], random_RGB[1], random_RGB[2]);
+    } else if (streifen == 2) {
+      pixels_2[led_nummer] = CRGB(random_RGB[0], random_RGB[1], random_RGB[2]);
+    }
+  }
+  led_nummer--;
+  return led_nummer;
+}
+
+void zufallswert_rgb() {
+  random_RGB[0] =  farbe_mit_helligkeit(random(0, 17) * 15);
+  random_RGB[1] = farbe_mit_helligkeit(random(0, 17) * 15);
+  random_RGB[2] = farbe_mit_helligkeit(random(0, 17) * 15);
+}
+
+int farbe_mit_helligkeit(int wert) {
+  return wert * (daten_helligkeit / 255.0);
+}
+
+
+void setze_led_farben(int streifen, int red, int green, int blue) {
+  switch (streifen) {
+    case 0:
+      for (int i = 0; i < NUMPIXELS_1; i++) {
+        pixels_1[i] = CRGB(red, green, blue);
+      }
+      for (int i = 0; i < NUMPIXELS_2; i++) {
+        pixels_2[i] = CRGB(red, green, blue);
+      }
+      for (int i = 0; i < NUMPIXELS_3; i++) {
+        pixels_3[i] = CRGB(red, green, blue);
+      }
+      for (int i = 0; i < NUMPIXELS_4; i++) {
+        pixels_4[i] = CRGB(red, green, blue);
+      }
+      break;
+    case 1:
+      for (int i = 0; i < NUMPIXELS_1; i++) {
+        pixels_1[i] = CRGB(red, green, blue);
+      }
+      break;
+    case 2:
+      for (int i = 0; i < NUMPIXELS_2; i++) {
+        pixels_2[i] = CRGB(red, green, blue);
+      }
+      break;
+    case 3:
+      for (int i = 0; i < NUMPIXELS_3; i++) {
+        pixels_3[i] = CRGB(red, green, blue);
+      }
+      break;
+    case 4:
+      for (int i = 0; i < NUMPIXELS_4; i++) {
+        pixels_4[i] = CRGB(red, green, blue);
+      }
+      break;
+  }
+}
+
+
+
+
+
+void auschalten_in_min() {
+  if (zeit_nehmen_aus_in == LOW) {
+    zeit_nehmen_aus_in = HIGH;
+    zeit_start_aus_in = millis();
+  }
+
+  if ((millis() - zeit_start_aus_in) > aus_in) {
+    zeit_nehmen_aus_in = LOW;
+    alles_ausmachen();
+  }
+}
+
+
+void zeitgesteuert_an_aus() {
+  int i;
+  while (i < 4) {
+    if (daten_zeitgesteuert_an_oder_aus[i] != 0) {
+      abfragen_zeitsteuerungen(daten_Wochentag[i], daten_Stunde[i], daten_Minute[i], daten_zeitgesteuert_an_oder_aus[i], daten_rot[i], daten_blau[i], daten_gruen[i]);
+    }
+    i++;
+  }
+}
+
+
+void abfragen_zeitsteuerungen(int tag, int stunde, int minute, int an_oder_aus, int rot, int blau, int gruen) {
+
+  DateTime now = rtc.now();
+  daten_wochentag_nr = now.dayOfTheWeek();
+
+  if ((tag == daten_wochentag_nr) || ((tag == 7) && (daten_wochentag_nr >= 0) && (daten_wochentag_nr <= 5)) || ((tag == 8) && (daten_wochentag_nr == 6) || (daten_wochentag_nr == 0)) || (tag == 9)) {
+    if ((stunde == now.hour()) && (minute == now.minute()) && (now.second() <= 2)) {
+      if (an_oder_aus == 1) {
+        daten_red = rot;
+        daten_green = gruen;
+        daten_blue = blau;
+        daten_modus = 0;
+        Serial.println("an-an-an-an-an-an-an-an-an-an-an-an-an-an-an-an-an-an-an-an-an-an-an-an-an-an");
+        Serial.println("an-an-an-an-an-an-an-an-an-an-an-an-an-an-an-an-an-an-an-an-an-an-an-an-an-an");
+      } else if (an_oder_aus == 2) {
+        Serial.println("aus-aus-aus-aus-aus-aus-aus-aus-aus-aus-aus-aus-aus-aus-aus-aus-aus-aus-aus");
+        Serial.println("aus-aus-aus-aus-aus-aus-aus-aus-aus-aus-aus-aus-aus-aus-aus-aus-aus-aus-aus");
+        alles_ausmachen();
+      }
+    }
+  }
+}
+
+
+
+void alles_ausmachen() {
+
+  a = 0;
+  b = NUMPIXELS_3;
+  c = 0;
+  d = NUMPIXELS_2;
+  daten_streifen_durchlauf_lauflicht = 5;
+
+  daten_web_modus = 3;
+  daten_modus = 3;
+  ausschalten_ja_nein = 1;
+
+  daten_web_aus_in = 0;
+  aus_in = 0;
+  daten_red = 0;
+  daten_green = 0;
+  daten_blue = 0;
+
+}
+
+
+void ausgabe() {
+  if ((millis() - warten_ausgabe) > zeit_start_fuer_ausgabe) {
+    zeit_start_fuer_ausgabe = millis();
+    DateTime now = rtc.now();
+    Serial.print("Helligkeit:   "); Serial.println(daten_helligkeit);
+    Serial.print("Streifen:   "); Serial.print(daten_web_nr_streifen);  Serial.print("    "); Serial.print(daten_streifen_nr);  Serial.print("    "); Serial.println(daten_web_streifen_nr);
+    Serial.print("Modus:   "); Serial.println(daten_modus);
+    Serial.print("Rot:   "); Serial.println(daten_red);
+    Serial.print("Grün:   "); Serial.println(daten_green);
+    Serial.print("Blau:   "); Serial.println(daten_blue);
+    Serial.print("PIN:   "); Serial.println(pin_web);
+
+    Serial.print("aus_in:   "); Serial.println(aus_in);
+    Serial.println("");
+    Serial.println(daysOfTheWeek[now.dayOfTheWeek()]);
+    Serial.print(now.hour()); Serial.print(":");  Serial.print(now.minute()); Serial.print(":"); Serial.println(now.second());
+    Serial.println(now.dayOfTheWeek());
+    Serial.println(daten_wochentag_nr);
+    Serial.println("");
+    int i;
+    while (i <= 3) {
+      Serial.print("Daten satz: "); Serial.print(i);
+      Serial.print("   daten_Wochentag:   "); Serial.print(daten_Wochentag[i]);
+      Serial.print("   daten_Stunde:   "); Serial.print(daten_Stunde[i]);
+      Serial.print("   daten_Minute:   "); Serial.print(daten_Minute[i]);
+      Serial.print("   daten_zeitgesteuert:   "); Serial.print(daten_zeitgesteuert_an_oder_aus[i]);
+      Serial.print("   daten_rot:   "); Serial.print(daten_rot[i]);
+      Serial.print("   daten_blau:   "); Serial.print(daten_blau[i]);
+      Serial.print("   daten_gruen:   "); Serial.print(daten_gruen[i]);
+      Serial.println("Webdaten");
+      Serial.print("Daten satz: "); Serial.print(i);
+      Serial.print("   web_daten_Wochentag:   "); Serial.print(web_daten_Wochentag[i]);
+      Serial.print("   daten_Stunde:   "); Serial.print(web_daten_Stunde[i]);
+      Serial.print("   daten_Minute:   "); Serial.print(web_daten_Minute[i]);
+      Serial.print("   daten_zeitgesteuert:   "); Serial.print(web_daten_zeitgesteuert_an_oder_aus[i]);
+      Serial.print("   daten_rot:   "); Serial.print(web_daten_rot[i]);
+      Serial.print("   daten_blau:   "); Serial.print(web_daten_blau[i]);
+      Serial.print("   daten_gruen:   "); Serial.print(web_daten_gruen[i]);
+      Serial.println();
+      i++;
+    }
+    Serial.println("");
+    Serial.println("");
+    Serial.println(pin_fuer_web_steuerung);
+  }
+}
