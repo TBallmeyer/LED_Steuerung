@@ -21,3 +21,9 @@ Und es sind verschiedene Effekte im Porgramm hinterlegt...
 3. eine art Lichterkette (x anzahl von LED leuchten in einer farbe, die nächsten x in einer anderen usw...)
 4. ein lauflicht über alle streifen
 5. und ein Zufallsmodus
+
+Für die eigene Nutzung müssen die Variablen...
+ssid
+password
+pin_fuer_web_steuerung
+Angepasst werden.
