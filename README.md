@@ -7,7 +7,7 @@ It's based on the Arduino FastLED biebliotek and include different effekt modes.
 4. a random Color mode 
 5. and a kind of fairy lights
 
-Plus You can difine Times on wich the Strips shuld switchs on or off
+Plus You can define Times on wich the Strips shuld switchs on or off
 
 
 Die LEd Steuerung basiert auf einem NodeMCU modul, wahlweise in Verbindung mit einer Real-Time-Clock (für zeitlich festgelegte Steuerungen) und - / oder einem Mikrofon (für ein VU-Meter);
